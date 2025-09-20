@@ -1,0 +1,6 @@
+west:
+  command: C:\ncs\toolchains\b8b84efebd\opt\bin\Scripts\west build --build-dir c:/Users/samal/OneDrive/Documents/GitHub/simple-bmv080-connection/build
+    c:/Users/samal/OneDrive/Documents/GitHub/simple-bmv080-connection --pristine --board
+    yaptic/nrf5340/cpuapp --no-sysbuild -- -DBOARD_ROOT=c:/users/samal/onedrive/documents/github/simple-bmv080-connection
+  topdir: c:\ncs\v3.1.0
+  version: 1.4.0

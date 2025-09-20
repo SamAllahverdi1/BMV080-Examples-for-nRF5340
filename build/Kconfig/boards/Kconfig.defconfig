@@ -1,0 +1,2 @@
+# Load Zephyr board defconfig descriptions.
+osource "C:/Users/samal/OneDrive/Documents/GitHub/simple-bmv080-connection/boards/arm/yaptic/Kconfig.defconfig"
