@@ -1,17 +1,34 @@
-# SPDX-License-Identifier: Apache-2.0
-
+# Specify the minimum version of CMake required.
 cmake_minimum_required(VERSION 3.20.0)
-set(BOARD_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 
+# Find the Zephyr package. This line is essential for any Zephyr application.
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
-project(simple_imu)
 
-# find all c source files in the lib directory
-file(GLOB_RECURSE SH2_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/lib/*.c)
+# Define the project name.
+project(simple-bmv080-connection)
 
-# Include all header files from lib/
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/lib)
+# --- Source Files and Include Directories ---
 
-target_sources(app PRIVATE src/main.c ${SH2_SOURCES})
+# Add the application's include directories.
+# This tells the compiler to look in the 'lib' and 'src' folders for header files.
+# Using target_include_directories is the modern, preferred method.
+target_include_directories(app PRIVATE
+    src
+    lib/arm_cortex_m33f
+    lib
+    )
 
+# Add the source files to the 'app' target.
+# It is best practice to list all source files explicitly.
+target_sources(app PRIVATE
+    src/main.c
+    lib/i2c.c
+    )
 
+# --- Link Libraries ---
+# CRITICAL: Link the pre-compiled Bosch .a libraries to your application.
+# Use ${CMAKE_SOURCE_DIR} to provide a full, absolute path to the files.
+target_link_libraries(app PRIVATE
+    ${CMAKE_SOURCE_DIR}/lib/arm_cortex_m33f/lib_bmv080.a
+    ${CMAKE_SOURCE_DIR}/lib/arm_cortex_m33f/lib_postProcessor.a
+    )

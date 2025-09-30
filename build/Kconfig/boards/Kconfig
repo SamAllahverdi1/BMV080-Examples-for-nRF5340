@@ -1,2 +1,2 @@
 # Load Zephyr board Kconfig descriptions.
-osource "C:/Users/samal/OneDrive/Documents/GitHub/simple-bmv080-connection/boards/arm/yaptic/Kconfig"
+osource "C:/ncs/v3.1.0/zephyr/boards/nordic/nrf5340dk/Kconfig"

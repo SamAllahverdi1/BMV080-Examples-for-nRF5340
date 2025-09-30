@@ -2,48 +2,36 @@
  * Devicetree overlay for the Bosch BMV080 Particulate Matter Sensor
  */
 
-/ {
-    /*
-     * This node defines the GPIOs used by the BMV080.
-     * The only interactive pin needed for the driver is the interrupt (IRQ).
-     */
-    sensor_gpios {
-        compatible = "gpio-keys";
-
-        /* The BMV080's interrupt pin (IRQ), which is active low. */
-        /* This corresponds to the 'intn' label from your old file. */
-        /* Make sure <&gpio1 14 ...> matches your board's schematic! */
-        interrupt_pin: interrupt_pin {
-            gpios = <&gpio1 14 GPIO_ACTIVE_LOW>;
-            label = "BMV080 Interrupt Pin";
+/* 1. Define the pin configuration for I2C2.
+ * NOTE: We are now using &i2c2, not &i2c0.
+ * The pins P1.02 and P1.03 are compatible with I2C2 on this board.
+ */
+&pinctrl {
+    i2c2_default: i2c2_default {
+        group1 {
+            psels = <NRF_PSEL(TWIM_SDA, 1, 2)>, /* P1.02 */
+                    <NRF_PSEL(TWIM_SCL, 1, 3)>; /* P1.03 */
         };
     };
 };
 
-/* Enable the I2C1 bus */
-&i2c1 {
+/* 2. Enable the I2C2 peripheral and link it to the pin configuration */
+&i2c2 {
     status = "okay";
+    pinctrl-0 = <&i2c2_default>;
+    pinctrl-names = "default";
 
-    /*
-     * Define the BMV080 sensor on the I2C bus.
-     * This node now has the label "bmv080" for your C code.
-     */
-    bmv080: bmv080@54 {
-        /*
-         * CRITICAL: The I2C address depends on your hardware wiring.
-         * The datasheet (Table 14) shows 4 possible addresses.
-         * 0x54 is the address when pins CSB and MISO are both tied to ground.
-         * Verify this address against your schematic!
-         */
-        reg = <0x54>;
-
-        /*
-         * Using a specific compatible string is best practice.
-         * The Bosch driver for this sensor will look for this.
-         */
+    /* This is your I2C sensor node */
+    bmv080_node: bmv080@57 {
         compatible = "bosch,bmv080";
+        reg = <0x57>; /* This is the 7-bit I2C address */
+        status = "okay";
+    };
+};
 
-        /* The IRQ pin is connected to the interrupt_pin defined above. */
-        irq-gpios = <&interrupt_pin>;
+/* 3. Create the alias for your sensor */
+/ {
+    aliases {
+        bmv080 = &bmv080_node;
     };
 };
