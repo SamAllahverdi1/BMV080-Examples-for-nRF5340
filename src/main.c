@@ -1,21 +1,11 @@
-/*
- * Copyright (c) 2024 Sam Allahverdi
- * SPDX-License-Identifier: Apache-2.0
- *
- * Description:
- * This file provides a comprehensive example of how to use the Bosch BMV080
- * sensor with the Zephyr RTOS, structured similarly to the official Bosch
- * bmv080_example.c.
- */
-
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <string.h> // For memset
+#include <zephyr/drivers/gpio.h> // LED config
 
 // Bosch BMV080 C driver API
 #include "bmv080.h"
 
-// Your I2C wrapper (not strictly needed, but good practice)
 #include "i2c_header.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
@@ -25,6 +15,10 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 // The devicetree node identifier for the BMV080 sensor.
 #define BMV080_NODE DT_ALIAS(bmv080)
 static const struct i2c_dt_spec bmv080_dev = I2C_DT_SPEC_GET(BMV080_NODE);
+
+/* The devicetree node identifier for the "led0" alias. */
+#define LED0_NODE DT_ALIAS(led0)
+static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 
 // Global handle for the BMV080 sensor instance
 static bmv080_handle_t bmv080_handle = NULL;
@@ -73,8 +67,9 @@ static uint32_t bmv080_get_tick_ms(void)
 static void use_sensor_output(bmv080_output_t bmv080_output, void *callback_parameters)
 {
     data_ready_callback_count++;
-    printk("Runtime: %.2fs, PM2.5: %.0f ug/m3, PM10: %.0f ug/m3, Obstructed: %s\n",
+    printk("Runtime: %.2fs, PM1: %.0f ug/m3, PM2.5: %.0f ug/m3, PM10: %.0f ug/m3, Obstructed: %s\n",
            bmv080_output.runtime_in_sec,
+           bmv080_output.pm1_mass_concentration,
            bmv080_output.pm2_5_mass_concentration,
            bmv080_output.pm10_mass_concentration,
            (bmv080_output.is_obstructed ? "yes" : "no"));
@@ -84,6 +79,15 @@ static void use_sensor_output(bmv080_output_t bmv080_output, void *callback_para
 
 int main(void)
 {
+
+    if (!gpio_is_ready_dt(&led)) {
+        // If this fails, something is very wrong with the board config
+        return 0;
+    }
+    if (gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE) < 0) {
+        return 0;
+    }
+
     bmv080_status_code_t status = E_BMV080_OK;
     bmv080_status_code_t final_status = E_BMV080_OK;
 
@@ -146,6 +150,7 @@ int main(void)
     data_ready_callback_count = 0;
     while (data_ready_callback_count < 30) {
         bmv080_serve_interrupt(bmv080_handle, use_sensor_output, NULL);
+        gpio_pin_toggle_dt(&led);
         k_msleep(100); // Poll every 100ms
     }
 

@@ -22,9 +22,9 @@
     pinctrl-names = "default";
 
     /* This is your I2C sensor node */
-    bmv080_node: bmv080@57 {
+    bmv080_node: bmv080@56 {
         compatible = "bosch,bmv080";
-        reg = <0x57>; /* This is the 7-bit I2C address */
+        reg = <0x56>; /* This is the 7-bit I2C address */
         status = "okay";
     };
 };
