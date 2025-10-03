@@ -2,5 +2,5 @@ build*/
 .vscode/
 
 # Ignore C source and header files in the arm_cortex_m33f library
-lib/arm_cortex_m33f/*.c
+lib/arm_cortex_m33f/*.a
 lib/arm_cortex_m33f/*.h
