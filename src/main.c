@@ -1,55 +1,41 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <string.h> // For memset
-#include <zephyr/drivers/gpio.h> // LED config
+#include <string.h>
+#include <zephyr/drivers/gpio.h>
 
-// Bosch BMV080 C driver API
+/* --- Our Header Files --- */
 #include "bmv080.h"
-
 #include "i2c_header.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
 /* --- Devicetree and Global Variables --- */
 
-// The devicetree node identifier for the BMV080 sensor.
+#define DEBUG 1
+
 #define BMV080_NODE DT_ALIAS(bmv080)
 static const struct i2c_dt_spec bmv080_dev = I2C_DT_SPEC_GET(BMV080_NODE);
 
-/* The devicetree node identifier for the "led0" alias. */
 #define LED0_NODE DT_ALIAS(led0)
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 
-// Global handle for the BMV080 sensor instance
 static bmv080_handle_t bmv080_handle = NULL;
 static volatile uint32_t data_ready_callback_count = 0;
 
 /* --- Callback Functions for Bosch Driver --- */
 
-// Bridge between the Bosch driver and the Zephyr I2C API.
-static int8_t bmv080_i2c_read(bmv080_sercom_handle_t sercom_handle, uint16_t reg_addr, uint16_t *data, uint16_t len)
+static int8_t bmv080_i2c_read(bmv080_sercom_handle_t sercom_handle, uint8_t *data, uint32_t len)
 {
     const struct i2c_dt_spec *dev = (const struct i2c_dt_spec *)sercom_handle;
-    uint8_t reg_addr_swapped[2] = {(uint8_t)(reg_addr >> 8), (uint8_t)reg_addr};
-
-    if (i2c_write_read_dt(dev, reg_addr_swapped, sizeof(reg_addr_swapped), (uint8_t *)data, len * 2) != 0) {
-        return E_BMV080_ERROR_HW_READ;
-    }
-    return E_BMV080_OK;
+    int32_t rc = i2c_driver_read(dev, data, len);
+    return (rc == 0) ? E_BMV080_OK : E_BMV080_ERROR_HW_READ;
 }
 
-static int8_t bmv080_i2c_write(bmv080_sercom_handle_t sercom_handle, uint16_t reg_addr, const uint16_t *data, uint16_t len)
+static int8_t bmv080_i2c_write(bmv080_sercom_handle_t sercom_handle, const uint8_t *data, uint32_t len)
 {
     const struct i2c_dt_spec *dev = (const struct i2c_dt_spec *)sercom_handle;
-    uint8_t buf[2 + (len * 2)];
-    buf[0] = (uint8_t)(reg_addr >> 8);
-    buf[1] = (uint8_t)reg_addr;
-    memcpy(&buf[2], data, len * 2);
-
-    if (i2c_write_dt(dev, buf, sizeof(buf)) != 0) {
-        return E_BMV080_ERROR_HW_WRITE;
-    }
-    return E_BMV080_OK;
+    int32_t rc = i2c_driver_write(dev, data, len);
+    return (rc == 0) ? E_BMV080_OK : E_BMV080_ERROR_HW_WRITE;
 }
 
 static int8_t bmv080_delay_ms(uint32_t period_ms)
@@ -63,8 +49,8 @@ static uint32_t bmv080_get_tick_ms(void)
     return k_uptime_get_32();
 }
 
-// Callback that receives and prints the sensor data.
-static void use_sensor_output(bmv080_output_t bmv080_output, void *callback_parameters)
+/* Print Sensor Data to Serial Terminal*/
+static void print_sensor_output(bmv080_output_t bmv080_output, void *callback_parameters)
 {
     data_ready_callback_count++;
     printk("Runtime: %.2fs, PM1: %.0f ug/m3, PM2.5: %.0f ug/m3, PM10: %.0f ug/m3, Obstructed: %s\n",
@@ -75,32 +61,34 @@ static void use_sensor_output(bmv080_output_t bmv080_output, void *callback_para
            (bmv080_output.is_obstructed ? "yes" : "no"));
 }
 
-/* --- Main Application --- */
-
 int main(void)
 {
+    if (DEBUG) {
+        printk("Attempting to configure LED.");
+    }
 
-    if (!gpio_is_ready_dt(&led)) {
-        // If this fails, something is very wrong with the board config
+    if (!gpio_is_ready_dt(&led) || gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE) < 0) {
         return 0;
     }
-    if (gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE) < 0) {
-        return 0;
+
+    if (DEBUG) {
+        printk("Configured LED.");
     }
 
     bmv080_status_code_t status = E_BMV080_OK;
     bmv080_status_code_t final_status = E_BMV080_OK;
 
-    printk("\n--- BMV080 Zephyr Example ---\n");
+    printk("\n--- BMV080 Concentration Measurement Example ---\n");
 
-    // Check if the I2C device from the devicetree is ready
     if (!device_is_ready(bmv080_dev.bus)) {
         printk("I2C bus is not ready!\n");
         return 0;
     }
 
-    // 1. Get Driver Version
-    uint16_t major = 0, minor = 0, patch = 0;
+    /* Get Driver Version */
+    uint16_t major = 0;
+    uint16_t minor = 0;
+    uint16_t patch = 0;
     status = bmv080_get_driver_version(&major, &minor, &patch, NULL, NULL);
     if (status != E_BMV080_OK) {
         printk("Failed to get driver version. Error: %d\n", status);
@@ -109,7 +97,7 @@ int main(void)
     }
     printk("Bosch Driver Version: %d.%d.%d\n", major, minor, patch);
 
-    // 2. Open Sensor
+    /* Open Sensor */
     status = bmv080_open(&bmv080_handle, (bmv080_sercom_handle_t)&bmv080_dev, bmv080_i2c_read, bmv080_i2c_write, bmv080_delay_ms);
     if (status != E_BMV080_OK) {
         printk("Failed to open BMV080 sensor. Error: %d\n", status);
@@ -118,7 +106,7 @@ int main(void)
     }
     printk("Sensor opened successfully.\n");
 
-    // 3. Reset Sensor
+    /* Reset Sensor */
     status = bmv080_reset(bmv080_handle);
     if (status != E_BMV080_OK) {
         printk("Failed to reset BMV080 sensor. Error: %d\n", status);
@@ -127,7 +115,7 @@ int main(void)
     }
     printk("Sensor reset successfully.\n");
 
-    // 4. Get Sensor ID
+    /* Get Sensor ID */
     char id[13];
     memset(id, 0, sizeof(id));
     status = bmv080_get_sensor_id(bmv080_handle, id);
@@ -138,8 +126,22 @@ int main(void)
     }
     printk("Sensor ID: %s\n\n", id);
 
-    // 5. Continuous Measurement Example (30 seconds)
-    printk("--- Starting Continuous Measurement (30 seconds) ---\n");
+    /* Set Measurement Algorithm
+        1 = Fast Response
+        2 = Balanced
+        3 = High Precision
+    */
+    bmv080_measurement_algorithm_t measurement_algorithm = E_BMV080_MEASUREMENT_ALGORITHM_BALANCED;
+    status = bmv080_set_parameter(bmv080_handle,"measurement_algorithm", (void*)&measurement_algorithm);
+    if (status != E_BMV080_OK) {
+        printk("Failed to set measurement algorithm. Error: %d\n", status);
+        final_status = status;
+        goto close_sensor;
+    }
+    printk("Measurement Algorithm: %d\n\n", measurement_algorithm);
+
+    /* ================== Continuous Measurement ==================*/
+    printk("=== Starting Continuous Measurement ===\n");
     status = bmv080_start_continuous_measurement(bmv080_handle);
     if (status != E_BMV080_OK) {
         printk("Failed to start continuous measurement. Error: %d\n", status);
@@ -147,41 +149,54 @@ int main(void)
         goto close_sensor;
     }
 
+    /* For continuous_measurement_duration seconds, 
+        -print output data
+        -toggle the LED to indicate measuremeant
+        -delay by 100 ms to increase accuracy
+    */
     data_ready_callback_count = 0;
-    while (data_ready_callback_count < 30) {
-        bmv080_serve_interrupt(bmv080_handle, use_sensor_output, NULL);
+    uint32_t continuous_measurement_duration = 60;
+    while (data_ready_callback_count < continuous_measurement_duration) {
+        bmv080_serve_interrupt(bmv080_handle, print_sensor_output, NULL);
         gpio_pin_toggle_dt(&led);
-        k_msleep(100); // Poll every 100ms
+        bmv080_delay_ms(100);
     }
 
     status = bmv080_stop_measurement(bmv080_handle);
-    printk("--- Continuous Measurement Stopped ---\n\n");
+    printk("=== Continuous Measurement Stopped ===\n\n");
 
-    // 6. Duty-Cycled Measurement Example (60 seconds)
-    printk("--- Starting Duty-Cycled Measurement (60 seconds) ---\n");
-    uint16_t duty_cycle_period = 20; // 20 seconds between measurements
+    /* ================== Duty Cycling ==================*/
+    printk("=== Starting Duty-Cycled Measurement ===\n");
+
+    uint16_t duty_cycle_period = 20;
     status = bmv080_set_parameter(bmv080_handle, "duty_cycling_period", &duty_cycle_period);
     printk("Set duty cycle period to %u seconds\n", duty_cycle_period);
 
-    status = bmv080_start_duty_cycling_measurement(bmv080_handle, bmv080_get_tick_ms, E_BMV080_DUTY_CYCLING_MODE_0);
+    bmv080_duty_cycling_mode_t duty_cycling_mode = E_BMV080_DUTY_CYCLING_MODE_0;
+    status = bmv080_start_duty_cycling_measurement(bmv080_handle, bmv080_get_tick_ms, duty_cycling_mode);
      if (status != E_BMV080_OK) {
         printk("Failed to start duty-cycled measurement. Error: %d\n", status);
         final_status = status;
         goto close_sensor;
     }
 
+    /* For duty_cycling_duration seconds, 
+        -print output data
+        -toggle the LED to indicate measuremeant
+        -delay by 100 ms to increase accuracy
+    */
     data_ready_callback_count = 0;
-    while ((data_ready_callback_count * duty_cycle_period) < 60) {
-         bmv080_serve_interrupt(bmv080_handle, use_sensor_output, NULL);
-         k_msleep(100); // Poll every 100ms
+    uint32_t duty_cycling_duration = 60;
+    while ((data_ready_callback_count * duty_cycle_period) < duty_cycling_duration) {
+        bmv080_serve_interrupt(bmv080_handle, print_sensor_output, NULL);
+        gpio_pin_toggle_dt(&led);
+        bmv080_delay_ms(100);
     }
 
     status = bmv080_stop_measurement(bmv080_handle);
-    printk("--- Duty-Cycled Measurement Stopped ---\n\n");
-
+    printk("=== Duty-Cycled Measurement Stopped ===\n\n");
 
 close_sensor:
-    // 7. Close Sensor
     status = bmv080_close(&bmv080_handle);
     if (status != E_BMV080_OK) {
         printk("Failed to close BMV080 sensor. Error: %d\n", status);
